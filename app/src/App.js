@@ -1,60 +1,79 @@
-import { ethers } from 'ethers';
-import { useEffect, useState } from 'react';
-import deploy from './deploy';
-import Escrow from './Escrow';
+import { ethers } from "ethers";
+import { useEffect, useState } from "react";
+import deploy from "./deploy";
+import Escrow from "./Escrow";
 
 const provider = new ethers.providers.Web3Provider(window.ethereum);
-
-export async function approve(escrowContract, signer) {
-  const approveTxn = await escrowContract.connect(signer).approve();
-  await approveTxn.wait();
-}
 
 function App() {
   const [escrows, setEscrows] = useState([]);
   const [account, setAccount] = useState();
   const [signer, setSigner] = useState();
+  const [errorMsg, setErrorMsg] = useState();
+
+  async function approve(escrowContract, signer) {
+    try {
+      const approveTxn = await escrowContract.connect(signer).approve();
+      await approveTxn.wait();
+      setErrorMsg("");
+    } catch (err) {
+      console.log("Error approving: ", err);
+      setErrorMsg(err.message);
+    }
+  }
 
   useEffect(() => {
     async function getAccounts() {
-      const accounts = await provider.send('eth_requestAccounts', []);
+      try {
+        const accounts = await provider.send("eth_requestAccounts", []);
 
-      setAccount(accounts[0]);
-      setSigner(provider.getSigner());
+        setAccount(accounts[0]);
+        setSigner(provider.getSigner());
+
+        getAccounts();
+
+        setErrorMsg("");
+      } catch (err) {
+        setErrorMsg(err.message);
+      }
     }
-
-    getAccounts();
   }, [account]);
 
   async function newContract() {
-    const beneficiary = document.getElementById('beneficiary').value;
-    const arbiter = document.getElementById('arbiter').value;
-    const value = ethers.BigNumber.from(document.getElementById('wei').value);
-    const escrowContract = await deploy(signer, arbiter, beneficiary, value);
+    try {
+      const beneficiary = document.getElementById("beneficiary").value;
+      const arbiter = document.getElementById("arbiter").value;
+      const value = ethers.BigNumber.from(document.getElementById("wei").value);
+      const escrowContract = await deploy(signer, arbiter, beneficiary, value);
 
+      const escrow = {
+        address: escrowContract.address,
+        arbiter,
+        beneficiary,
+        value: value.toString(),
+        handleApprove: async () => {
+          escrowContract.on("Approved", () => {
+            document.getElementById(escrowContract.address).className =
+              "complete";
+            document.getElementById(escrowContract.address).innerText =
+              "✓ It's been approved!";
+          });
 
-    const escrow = {
-      address: escrowContract.address,
-      arbiter,
-      beneficiary,
-      value: value.toString(),
-      handleApprove: async () => {
-        escrowContract.on('Approved', () => {
-          document.getElementById(escrowContract.address).className =
-            'complete';
-          document.getElementById(escrowContract.address).innerText =
-            "✓ It's been approved!";
-        });
+          await approve(escrowContract, signer);
+        },
+      };
 
-        await approve(escrowContract, signer);
-      },
-    };
+      setErrorMsg("");
 
-    setEscrows([...escrows, escrow]);
+      setEscrows([...escrows, escrow]);
+    } catch (err) {
+      setErrorMsg(err.message);
+    }
   }
 
   return (
     <>
+      <p>{errorMsg}</p>
       <div className="contract">
         <h1> New Contract </h1>
         <label>
